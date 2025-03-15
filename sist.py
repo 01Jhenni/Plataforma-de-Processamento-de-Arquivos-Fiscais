@@ -30,40 +30,67 @@ def verificar_arquivo(arquivo):
     except Exception as e:
         return False
 
-def classificar_arquivo(arquivo):
-    """Classifica o arquivo baseado nas tags XML e sua estrutura."""
-    try:
-        if arquivo.name.endswith(".xml"):
-            tree = ET.parse(arquivo)
+def classificar_arquivo(nome_arquivo):
+    """Classifica o arquivo baseado no nome e conteúdo XML."""
+    
+    # Categoria de arquivos
+    categorias = {
+        "NFE_ENTRADA": ["NFe", "entrada"],
+        "NFE_SAIDA": ["NFe", "saida"],
+        "CTE_ENTRADA": ["CTe", "entrada"],
+        "CTE_SAIDA": ["CTe", "saida"],
+        "CTE_CANCELADA": ["CTe", "cancelada"],
+        "NFCE_SAIDA": ["NFCe"],
+        "SPED": [".txt"],  # SPED é tratado como TXT
+        "NFS_TOMADOS": ["tomado"],
+        "NFS_PRESTADO": ["prestado"],
+        "PLANILHA": [".xls", ".xlsx"],  # Planilha Excel
+        "TXT": [".txt"]
+    }
+
+    nome_arquivo_lower = nome_arquivo.lower()
+    
+    for categoria, palavras_chave in categorias.items():
+        if any(palavra.lower() in nome_arquivo_lower for palavra in palavras_chave):
+            return categoria
+    
+    # Analisando o conteúdo XML para distinguir NFe entrada e NFe saída
+    if nome_arquivo.lower().endswith(".xml"):
+        try:
+            tree = ET.parse(nome_arquivo)
             root = tree.getroot()
             
-            # Verificando se é NFe (Entrada ou Saída)
-            if root.tag == "NFe":
-                tpNF = root.find(".//ide/tpNF").text
-                if tpNF == "0":
+            if "NFe" in nome_arquivo:
+                if "entrada" in nome_arquivo.lower():
                     return "NFE_ENTRADA"
-                elif tpNF == "1":
+                if "saida" in nome_arquivo.lower():
                     return "NFE_SAIDA"
+                # Checando dentro do XML para determinar o tipo
+                for elem in root.iter("infNFe"):
+                    tipo = elem.attrib.get("versao")
+                    if tipo:
+                        if "entrada" in tipo.lower():
+                            return "NFE_ENTRADA"
+                        elif "saida" in tipo.lower():
+                            return "NFE_SAIDA"
             
-            # Verificando se é CT-e
-            elif root.tag == "CTe":
-                return "CTE_SAIDA"  # O CT-e é mais comum como saída, mas pode haver variações
-
-            # Verificando se é NFC-e
-            elif root.tag == "NFCe":
+            # NFCe
+            if "NFCE" in nome_arquivo:
                 return "NFCE_SAIDA"
             
-            # Verificando se é NFS-e (Notificação Fiscal de Serviço Eletrônica)
-            elif root.tag == "NFS":
-                if "prestado" in arquivo.name.lower():
-                    return "NFS_PRESTADO"
-                elif "tomado" in arquivo.name.lower():
-                    return "NFS_TOMADOS"
+            # Classificação de CTe
+            if "CTe" in nome_arquivo:
+                if "entrada" in nome_arquivo.lower():
+                    return "CTE_ENTRADA"
+                elif "saida" in nome_arquivo.lower():
+                    return "CTE_SAIDA"
+                elif "cancelada" in nome_arquivo.lower():
+                    return "CTE_CANCELADA"
             
-        # Se não for XML ou não for reconhecido
-        return "OUTROS"
-    except Exception as e:
-        return "OUTROS"
+        except ET.ParseError:
+            pass
+        
+    return "OUTROS"
 
 def processar_arquivos(uploaded_files, nome_empresa):
     """Processa os arquivos, organizando-os por categoria e permitindo download."""
@@ -94,14 +121,14 @@ def processar_arquivos(uploaded_files, nome_empresa):
                 for raiz, _, arquivos in os.walk(pasta_extracao):
                     for nome_arquivo in arquivos:
                         caminho_arquivo = os.path.join(raiz, nome_arquivo)
-                        categoria = classificar_arquivo(open(caminho_arquivo, 'rb'))
+                        categoria = classificar_arquivo(nome_arquivo)
                         pasta_destino = os.path.join(pasta_empresa, categoria)
                         os.makedirs(pasta_destino, exist_ok=True)
                         shutil.move(caminho_arquivo, os.path.join(pasta_destino, nome_arquivo))
                 
                 shutil.rmtree(pasta_extracao)  # Remove a pasta temporária
             else:
-                categoria = classificar_arquivo(arquivo)
+                categoria = classificar_arquivo(arquivo.name)
                 pasta_destino = os.path.join(pasta_empresa, categoria)
                 salvar_arquivo(arquivo, pasta_destino)
         
