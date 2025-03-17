@@ -39,7 +39,7 @@ def classificar_arquivo(nome_arquivo):
         "CTE_CANCELADA": ["CTe", "cancelada"],
         "NFCE_SAIDA": ["NFCe"],
         "SPED": ["SPED"],
-        "NFS_TOMADOS": ["tomado"],
+        "NFS_TOMADOS": ["tomado" , "nfse"],
         "NFS_PRESTADO": ["prestado"],
         "PLANILHA": [".xls", ".xlsx"],
         "TXT": [".txt"]
