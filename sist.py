@@ -83,6 +83,36 @@ empresas_cnpjs = {
 
 }
 
+import streamlit as st
+import sqlite3
+import pandas as pd
+import os
+import shutil
+import zipfile
+import tempfile
+import xml.etree.ElementTree as ET
+import re
+from io import BytesIO
+
+conn = sqlite3.connect("importa_register.db", check_same_thread=False)
+cursor = conn.cursor()
+cursor.execute('''CREATE TABLE IF NOT EXISTS registros (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    data TEXT,
+                    empresa TEXT,
+                    tipo_nota TEXT,
+                    erro TEXT,
+                    arquivo_erro TEXT,
+                    status TEXT DEFAULT 'Pendente')''')
+conn.commit()
+
+# Lista de empresas e CNPJs
+empresas_cnpjs = {
+    "Empresa A": "12345678000199",
+    "Empresa B": "98765432000188",
+    "Empresa C": "11223344000177"
+}
+
 def extrair_cnpj(texto):
     """ Extrai CNPJ de um texto usando regex. """
     match = re.search(r'\d{14}', texto)
@@ -118,13 +148,13 @@ def identificar_tipo_nota(caminho_arquivo, cnpj_empresa):
                         tipo_doc = "CTE"
 
             if tipo_doc == "NFE":
-                return "NFE_ENTRADA" if cnpj_destinatario == cnpj_empresa else "NFE_SAIDA"
+                return "NFE/ENTRADA" if cnpj_destinatario == cnpj_empresa else "NFE/SAIDA"
             elif tipo_doc == "NFCE":
-                return "NFCE_SAIDA"
+                return "NFCE/SAIDA"
             elif tipo_doc == "CTE":
                 if "canc" in root.tag:
-                    return "CTE_CANCELADA"
-                return "CTE_ENTRADA" if cnpj_destinatario == cnpj_empresa else "CTE_SAIDA"
+                    return "CTE/CANCELADA"
+                return "CTE/ENTRADA" if cnpj_destinatario == cnpj_empresa else "CTE/SAIDA"
 
         elif caminho_arquivo.endswith(".txt"):
             with open(caminho_arquivo, "r", encoding="utf-8") as f:
@@ -136,9 +166,9 @@ def identificar_tipo_nota(caminho_arquivo, cnpj_empresa):
                 if "SPED" in conteudo:
                     return "SPED"
                 elif "NFS TOMADO" in conteudo:
-                    return "NFS_TOMADO"
+                    return "NFS/TOMADO"
                 elif "NFS PRESTADO" in conteudo:
-                    return "NFS_PRESTADO"
+                    return "NFS/PRESTADO"
         
         elif caminho_arquivo.endswith(".xls") or caminho_arquivo.endswith(".xlsx"):
             return "PLANILHA"
@@ -168,7 +198,8 @@ def processar_arquivos(uploaded_files, nome_empresa, cnpj_empresa):
             caminho_arquivo = os.path.join(pasta_empresa, arquivo.name)
             salvar_arquivo(arquivo, pasta_empresa)
             categoria = identificar_tipo_nota(caminho_arquivo, cnpj_empresa)
-            pasta_destino = os.path.join(pasta_empresa, categoria)
+            pasta_tipo, pasta_subtipo = categoria.split("/") if "/" in categoria else (categoria, "OUTROS")
+            pasta_destino = os.path.join(pasta_empresa, pasta_tipo, pasta_subtipo)
             os.makedirs(pasta_destino, exist_ok=True)
             shutil.move(caminho_arquivo, os.path.join(pasta_destino, arquivo.name))
         
