@@ -30,26 +30,32 @@ def verificar_arquivo(arquivo):
         return False
 
 def classificar_arquivo(nome_arquivo):
-    """Classifica o arquivo baseado no nome e extensão."""
-    categorias = {
-        "NFE_ENTRADA": ["NFe", "entrada"],
-        "NFE_SAIDA": ["NFe", "saida"],
-        "CTE_ENTRADA": ["CTe", "entrada"],
-        "CTE_SAIDA": ["CTe", "saida"],
-        "CTE_CANCELADA": ["CTe", "cancelada"],
-        "NFCE_SAIDA": ["NFCe"],
-        "SPED": ["SPED"],
-        "NFS_TOMADOS": ["tomado" , "nfse"],
-        "NFS_PRESTADO": ["prestado"],
-        "PLANILHA": [".xls", ".xlsx"],
-        "TXT": [".txt"]
-    }
-    
     nome_arquivo_lower = nome_arquivo.lower()
-    for categoria, palavras_chave in categorias.items():
-        if any(palavra.lower() in nome_arquivo_lower for palavra in palavras_chave):
-            return categoria
-    return "OUTROS"
+
+    if "nfe" in nome_arquivo_lower and "entrada" in nome_arquivo_lower:
+        return "NFE_ENTRADA"
+    elif "nfe" in nome_arquivo_lower and "saida" in nome_arquivo_lower:
+        return "NFE_SAIDA"
+    elif "cte" in nome_arquivo_lower and "entrada" in nome_arquivo_lower:
+        return "CTE_ENTRADA"
+    elif "cte" in nome_arquivo_lower and "saida" in nome_arquivo_lower:
+        return "CTE_SAIDA"
+    elif "cte" in nome_arquivo_lower and "cancelada" in nome_arquivo_lower:
+        return "CTE_CANCELADA"
+    elif "nfce" in nome_arquivo_lower:
+        return "NFCE_SAIDA"
+    elif "sped" in nome_arquivo_lower:
+        return "SPED"
+    elif "tomado" in nome_arquivo_lower and "nfse" in nome_arquivo_lower:
+        return "NFS_TOMADOS"
+    elif "prestado" in nome_arquivo_lower:
+        return "NFS_PRESTADO"
+    elif ".xls" in nome_arquivo_lower or ".xlsx" in nome_arquivo_lower:
+        return "PLANILHA"
+    elif ".txt" in nome_arquivo_lower:
+        return "TXT"
+    else:
+        return "OUTROS"
 
 def processar_arquivos(uploaded_files, nome_empresa):
     """Processa os arquivos, organizando-os por categoria e permitindo download."""
