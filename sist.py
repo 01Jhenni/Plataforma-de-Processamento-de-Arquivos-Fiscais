@@ -32,14 +32,14 @@ def verificar_arquivo(arquivo):
 def classificar_arquivo(nome_arquivo):
     nome_arquivo_lower = nome_arquivo.lower()
 
-    if "nfe" in nome_arquivo_lower and "entrada" and "saída" in nome_arquivo_lower:
-        return "NFE"
-    elif "cte" in nome_arquivo_lower and "entrada" in nome_arquivo_lower:
+    if "cte" in nome_arquivo_lower and "entrada" in nome_arquivo_lower:
         return "CTE_ENTRADA"
     elif "cte" in nome_arquivo_lower and "saida" in nome_arquivo_lower:
         return "CTE_SAIDA"
     elif "cte" in nome_arquivo_lower and "cancelada" in nome_arquivo_lower:
         return "CTE_CANCELADA"
+    elif "nfe" in nome_arquivo_lower and "entrada" in nome_arquivo_lower and "saída" in nome_arquivo_lower:
+        return "NFE"
     elif "nfce" in nome_arquivo_lower:
         return "NFCE_SAIDA"
     elif "sped" in nome_arquivo_lower:
