@@ -1,102 +1,105 @@
 import streamlit as st
+import sqlite3
+import pandas as pd
 import os
 import shutil
 import zipfile
 import tempfile
+import xml.etree.ElementTree as ET
+import re
 from io import BytesIO
 
-def salvar_arquivo(arquivo, pasta_destino):
-    """Salva um arquivo na pasta de destino."""
-    os.makedirs(pasta_destino, exist_ok=True)
-    caminho_completo = os.path.join(pasta_destino, arquivo.name)
-    with open(caminho_completo, "wb") as f:
-        f.write(arquivo.getbuffer())
+conn = sqlite3.connect("importa_register.db", check_same_thread=False)
+cursor = conn.cursor()
+cursor.execute('''CREATE TABLE IF NOT EXISTS registros (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    data TEXT,
+                    empresa TEXT,
+                    tipo_nota TEXT,
+                    erro TEXT,
+                    arquivo_erro TEXT,
+                    status TEXT DEFAULT 'Pendente')''')
+conn.commit()
 
-def extrair_zip(arquivo_zip, pasta_destino):
-    """Extrai arquivos ZIP para uma pasta específica."""
-    os.makedirs(pasta_destino, exist_ok=True)
-    with zipfile.ZipFile(arquivo_zip, 'r') as zip_ref:
-        zip_ref.extractall(pasta_destino)
+def extrair_cnpj(texto):
+    """ Extrai CNPJ de um texto usando regex. """
+    match = re.search(r'\d{14}', texto)
+    return match.group(0) if match else None
 
-def verificar_arquivo(arquivo):
-    """Verifica se o arquivo não está corrompido."""
+def identificar_tipo_nota(caminho_arquivo, cnpj_empresa):
+    """
+    Lê o conteúdo do arquivo e identifica se é Nota de Entrada ou Saída baseado no CNPJ.
+    Retorna a categoria correta.
+    """
     try:
-        if arquivo.name.endswith(".xml") or arquivo.name.endswith(".txt"):
-            conteudo = arquivo.read()
-            if not conteudo.strip():
-                return False
-        return True
+        if caminho_arquivo.endswith(".xml"):
+            tree = ET.parse(caminho_arquivo)
+            root = tree.getroot()
+            
+            cnpj_emitente = None
+            cnpj_destinatario = None
+            
+            for elem in root.iter():
+                if "emit" in elem.tag:  # Pega o CNPJ do emitente
+                    for subelem in elem.iter():
+                        if "CNPJ" in subelem.tag:
+                            cnpj_emitente = subelem.text
+                if "dest" in elem.tag:  # Pega o CNPJ do destinatário
+                    for subelem in elem.iter():
+                        if "CNPJ" in subelem.tag:
+                            cnpj_destinatario = subelem.text
+            
+            if cnpj_destinatario == cnpj_empresa:
+                return "NFE_ENTRADA"
+            elif cnpj_emitente == cnpj_empresa:
+                return "NFE_SAIDA"
+
+        elif caminho_arquivo.endswith(".txt"):
+            with open(caminho_arquivo, "r", encoding="utf-8") as f:
+                conteudo = f.read()
+                
+                cnpj_emitente = extrair_cnpj(conteudo)
+                cnpj_destinatario = extrair_cnpj(conteudo)
+
+                if cnpj_destinatario == cnpj_empresa:
+                    return "NFE_ENTRADA"
+                elif cnpj_emitente == cnpj_empresa:
+                    return "NFE_SAIDA"
+
     except Exception as e:
-        return False
+        print(f"Erro ao identificar tipo de nota: {e}")
+    
+    return "OUTROS"
 
-def classificar_arquivo(nome_arquivo):
-    nome_arquivo_lower = nome_arquivo.lower()
-
-    if "cte" in nome_arquivo_lower and "entrada" in nome_arquivo_lower:
-        return "CTE_ENTRADA"
-    elif "cte" in nome_arquivo_lower and "saida" in nome_arquivo_lower:
-        return "CTE_SAIDA"
-    elif "cte" in nome_arquivo_lower and "cancelada" in nome_arquivo_lower:
-        return "CTE_CANCELADA"
-    elif "nfe" in nome_arquivo_lower and "entrada" in nome_arquivo_lower and "saída" in nome_arquivo_lower:
-        return "NFE"
-    elif "nfce" in nome_arquivo_lower:
-        return "NFCE_SAIDA"
-    elif "sped" in nome_arquivo_lower:
-        return "SPED"
-    elif "tomado" in nome_arquivo_lower and "nfse" in nome_arquivo_lower:
-        return "NFS_TOMADOS"
-    elif "prestado" in nome_arquivo_lower:
-        return "NFS_PRESTADO"
-    elif ".xls" in nome_arquivo_lower or ".xlsx" in nome_arquivo_lower:
-        return "PLANILHA"
-    elif ".txt" in nome_arquivo_lower:
-        return "TXT"
-    else:
-        return "OUTROS"
-
-def processar_arquivos(uploaded_files, nome_empresa):
-    """Processa os arquivos, organizando-os por categoria e permitindo download."""
-    if not nome_empresa:
-        st.error("Por favor, digite o nome da empresa antes de processar os arquivos.")
-        return
+def processar_arquivos(uploaded_files, nome_empresa, cnpj_empresa):
+    if not nome_empresa or not cnpj_empresa:
+        st.error("Por favor, digite o nome e o CNPJ da empresa antes de processar os arquivos.")
+        return None
     
     with tempfile.TemporaryDirectory() as pasta_temp:
         pasta_empresa = os.path.join(pasta_temp, nome_empresa)
         os.makedirs(pasta_empresa, exist_ok=True)
-        
         arquivos_corrompidos = []
         
         for arquivo in uploaded_files:
-            if not verificar_arquivo(arquivo):
-                arquivos_corrompidos.append(arquivo.name)
-                continue
-            
             if arquivo.name.endswith(".zip"):
                 pasta_extracao = os.path.join(pasta_empresa, "TEMP_ZIP")
                 os.makedirs(pasta_extracao, exist_ok=True)
-                
                 with open(os.path.join(pasta_extracao, arquivo.name), "wb") as f:
                     f.write(arquivo.getbuffer())
-                
                 extrair_zip(os.path.join(pasta_extracao, arquivo.name), pasta_extracao)
-                
                 for raiz, _, arquivos in os.walk(pasta_extracao):
                     for nome_arquivo in arquivos:
                         caminho_arquivo = os.path.join(raiz, nome_arquivo)
-                        categoria = classificar_arquivo(nome_arquivo)
+                        categoria = identificar_tipo_nota(caminho_arquivo, cnpj_empresa)
                         pasta_destino = os.path.join(pasta_empresa, categoria)
                         os.makedirs(pasta_destino, exist_ok=True)
                         shutil.move(caminho_arquivo, os.path.join(pasta_destino, nome_arquivo))
-                
-                shutil.rmtree(pasta_extracao)  # Remove a pasta temporária
+                shutil.rmtree(pasta_extracao)
             else:
-                categoria = classificar_arquivo(arquivo.name)
+                categoria = identificar_tipo_nota(arquivo.name, cnpj_empresa)
                 pasta_destino = os.path.join(pasta_empresa, categoria)
                 salvar_arquivo(arquivo, pasta_destino)
-        
-        if arquivos_corrompidos:
-            st.warning(f"Os seguintes arquivos estão corrompidos e não foram processados: {', '.join(arquivos_corrompidos)}")
         
         zip_buffer = BytesIO()
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
@@ -105,14 +108,15 @@ def processar_arquivos(uploaded_files, nome_empresa):
                     caminho_completo = os.path.join(raiz, arquivo)
                     zipf.write(caminho_completo, os.path.relpath(caminho_completo, pasta_empresa))
         zip_buffer.seek(0)
-        
-        st.success("Arquivos processados com sucesso! Faça o download abaixo.")
-        st.download_button("Baixar Arquivos Processados", zip_buffer, f"{nome_empresa}_arquivos.zip", "application/zip")
+        return zip_buffer
 
-# Interface Streamlit
 st.title("Organizador de Arquivos Fiscais")
 nome_empresa = st.text_input("Nome da Empresa")
+cnpj_empresa = st.text_input("CNPJ da Empresa")
 uploaded_files = st.file_uploader("Envie seus arquivos XML, TXT, ZIP ou Excel", accept_multiple_files=True)
 
 if st.button("Processar Arquivos"):
-    processar_arquivos(uploaded_files, nome_empresa)
+    zip_buffer = processar_arquivos(uploaded_files, nome_empresa, cnpj_empresa)
+    if zip_buffer:
+        st.success("Arquivos processados com sucesso! Faça o download abaixo.")
+        st.download_button("Baixar Arquivos Processados", zip_buffer, f"{nome_empresa}.zip", "application/zip")
