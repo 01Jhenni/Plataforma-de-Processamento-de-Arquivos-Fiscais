@@ -110,7 +110,7 @@ def identificar_tipo_nota(caminho_arquivo, cnpj_empresa):
                         if "CNPJ" in subelem.tag:
                             cnpj_destinatario = subelem.text
                 if "mod" in elem.tag:  # Modelo da nota
-                    if elem.text == "55":
+                    if elem.text == "<mod>55</mod>":
                         tipo_doc = "NFE"
                     elif elem.text == "65":
                         tipo_doc = "NFCE"
