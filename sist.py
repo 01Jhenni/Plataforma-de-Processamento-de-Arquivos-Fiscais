@@ -83,36 +83,6 @@ empresas_cnpjs = {
 
 }
 
-import streamlit as st
-import sqlite3
-import pandas as pd
-import os
-import shutil
-import zipfile
-import tempfile
-import xml.etree.ElementTree as ET
-import re
-from io import BytesIO
-
-conn = sqlite3.connect("importa_register.db", check_same_thread=False)
-cursor = conn.cursor()
-cursor.execute('''CREATE TABLE IF NOT EXISTS registros (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    data TEXT,
-                    empresa TEXT,
-                    tipo_nota TEXT,
-                    erro TEXT,
-                    arquivo_erro TEXT,
-                    status TEXT DEFAULT 'Pendente')''')
-conn.commit()
-
-# Lista de empresas e CNPJs
-empresas_cnpjs = {
-    "Empresa A": "12345678000199",
-    "Empresa B": "98765432000188",
-    "Empresa C": "11223344000177"
-}
-
 def extrair_cnpj(texto):
     """ Extrai CNPJ de um texto usando regex. """
     match = re.search(r'\d{14}', texto)
