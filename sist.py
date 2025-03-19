@@ -90,16 +90,15 @@ def extrair_cnpj(texto):
 
 def identificar_tipo_nota(caminho_arquivo, cnpj_empresa):
     """
-    Lê o conteúdo do arquivo e identifica se é Nota de Entrada ou Saída baseado no CNPJ.
-    Retorna a categoria correta.
+    Identifica o tipo do documento com base na estrutura do XML/TXT e no CNPJ.
     """
     try:
         if caminho_arquivo.endswith(".xml"):
             tree = ET.parse(caminho_arquivo)
             root = tree.getroot()
-            
             cnpj_emitente = None
             cnpj_destinatario = None
+            tipo_doc = "OUTROS"
             
             for elem in root.iter():
                 if "emit" in elem.tag:
@@ -110,11 +109,22 @@ def identificar_tipo_nota(caminho_arquivo, cnpj_empresa):
                     for subelem in elem.iter():
                         if "CNPJ" in subelem.tag:
                             cnpj_destinatario = subelem.text
-            
-            if cnpj_destinatario == cnpj_empresa:
-                return "NFE_ENTRADA"
-            elif cnpj_emitente == cnpj_empresa:
-                return "NFE_SAIDA"
+                if "mod" in elem.tag:  # Modelo da nota
+                    if elem.text == "55":
+                        tipo_doc = "NFE"
+                    elif elem.text == "65":
+                        tipo_doc = "NFCE"
+                    elif elem.text == "57":
+                        tipo_doc = "CTE"
+
+            if tipo_doc == "NFE":
+                return "NFE_ENTRADA" if cnpj_destinatario == cnpj_empresa else "NFE_SAIDA"
+            elif tipo_doc == "NFCE":
+                return "NFCE_SAIDA"
+            elif tipo_doc == "CTE":
+                if "canc" in root.tag:
+                    return "CTE_CANCELADA"
+                return "CTE_ENTRADA" if cnpj_destinatario == cnpj_empresa else "CTE_SAIDA"
 
         elif caminho_arquivo.endswith(".txt"):
             with open(caminho_arquivo, "r", encoding="utf-8") as f:
@@ -122,11 +132,16 @@ def identificar_tipo_nota(caminho_arquivo, cnpj_empresa):
                 
                 cnpj_emitente = extrair_cnpj(conteudo)
                 cnpj_destinatario = extrair_cnpj(conteudo)
-
-                if cnpj_destinatario == cnpj_empresa:
-                    return "NFE_ENTRADA"
-                elif cnpj_emitente == cnpj_empresa:
-                    return "NFE_SAIDA"
+                
+                if "SPED" in conteudo:
+                    return "SPED"
+                elif "NFS TOMADO" in conteudo:
+                    return "NFS_TOMADO"
+                elif "NFS PRESTADO" in conteudo:
+                    return "NFS_PRESTADO"
+        
+        elif caminho_arquivo.endswith(".xls") or caminho_arquivo.endswith(".xlsx"):
+            return "PLANILHA"
 
     except Exception as e:
         print(f"Erro ao identificar tipo de nota: {e}")
@@ -139,19 +154,6 @@ def salvar_arquivo(arquivo, pasta_destino):
     with open(caminho_completo, "wb") as f:
         f.write(arquivo.getbuffer())
 
-def extrair_zip(arquivo_zip, pasta_destino, cnpj_empresa):
-    os.makedirs(pasta_destino, exist_ok=True)
-    with zipfile.ZipFile(arquivo_zip, 'r') as zip_ref:
-        zip_ref.extractall(pasta_destino)
-    
-    for raiz, _, arquivos in os.walk(pasta_destino):
-        for nome_arquivo in arquivos:
-            caminho_arquivo = os.path.join(raiz, nome_arquivo)
-            categoria = identificar_tipo_nota(caminho_arquivo, cnpj_empresa)
-            pasta_final = os.path.join(pasta_destino, categoria)
-            os.makedirs(pasta_final, exist_ok=True)
-            shutil.move(caminho_arquivo, os.path.join(pasta_final, nome_arquivo))
-
 def processar_arquivos(uploaded_files, nome_empresa, cnpj_empresa):
     if not nome_empresa or not cnpj_empresa:
         st.error("Por favor, selecione a empresa antes de processar os arquivos.")
@@ -163,20 +165,12 @@ def processar_arquivos(uploaded_files, nome_empresa, cnpj_empresa):
         arquivos_corrompidos = []
         
         for arquivo in uploaded_files:
-            if arquivo.name.endswith(".zip"):
-                pasta_extracao = os.path.join(pasta_empresa, "TEMP_ZIP")
-                os.makedirs(pasta_extracao, exist_ok=True)
-                with open(os.path.join(pasta_extracao, arquivo.name), "wb") as f:
-                    f.write(arquivo.getbuffer())
-                extrair_zip(os.path.join(pasta_extracao, arquivo.name), pasta_extracao, cnpj_empresa)
-                shutil.rmtree(pasta_extracao)
-            else:
-                caminho_arquivo = os.path.join(pasta_empresa, arquivo.name)
-                salvar_arquivo(arquivo, pasta_empresa)
-                categoria = identificar_tipo_nota(caminho_arquivo, cnpj_empresa)
-                pasta_destino = os.path.join(pasta_empresa, categoria)
-                os.makedirs(pasta_destino, exist_ok=True)
-                shutil.move(caminho_arquivo, os.path.join(pasta_destino, arquivo.name))
+            caminho_arquivo = os.path.join(pasta_empresa, arquivo.name)
+            salvar_arquivo(arquivo, pasta_empresa)
+            categoria = identificar_tipo_nota(caminho_arquivo, cnpj_empresa)
+            pasta_destino = os.path.join(pasta_empresa, categoria)
+            os.makedirs(pasta_destino, exist_ok=True)
+            shutil.move(caminho_arquivo, os.path.join(pasta_destino, arquivo.name))
         
         zip_buffer = BytesIO()
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
